@@ -163,7 +163,7 @@ Click "Start Compression" and watch the magic happen in real-time!
 ## 🎨 Screenshots
 
 _Coming soon - Add your screenshots here_
-
+https://salify-app.vercel.app/
 ```
 [Upload Area] [Compression Mode] [Results Dashboard]
 ```

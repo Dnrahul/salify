@@ -10,6 +10,8 @@ Salify is a privacy-first, browser-based file compression tool that compresses i
 
 Salify is a privacy-first file compression tool that processes everything locally in your browser. Your files never leave your device, ensuring complete privacy and security. Perfect for compressing images, videos, and PDFs without the need to upload them to any server.
 
+> **Live Demo**: [https://salify-app.vercel.app/](https://salify-app.vercel.app/)  
+
 ### 🎯 Why Salify?
 
 Most online compression tools upload your files to their servers, raising privacy concerns. Salify takes a different approach:

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Settings, FileVideo, FileImage, FileText, Share2, Download, Zap, CheckCircle, X } from 'lucide-react';
+import { getCompressionConfig } from './compressionUtils';
 
 const Salify = () => {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -10,10 +11,11 @@ const Salify = () => {
   const [showResults, setShowResults] = useState(false);
   const fileInputRef = useRef(null);
 
-  const compressionModes = {
-    high: { label: 'High Quality', desc: 'Minimal compression, max clarity', ratio: 0.85 },
-    balanced: { label: 'Balanced', desc: 'Medium compression, good quality', ratio: 0.60 },
-    max: { label: 'Max Compression', desc: 'Aggressive compression, smaller size', ratio: 0.35 }
+  const compressionModes = getCompressionConfig(compressionMode);
+  const allModes = {
+    high: getCompressionConfig('high'),
+    balanced: getCompressionConfig('balanced'),
+    max: getCompressionConfig('max')
   };
 
   const handleFileSelect = (e) => {
@@ -52,6 +54,37 @@ const Salify = () => {
     return <FileText className="w-6 h-6 text-gray-500" />;
   };
 
+  // Compress image using Canvas API
+  const compressImage = async (file, quality) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          // Set canvas dimensions to original
+          canvas.width = img.width;
+          canvas.height = img.height;
+
+          // Draw and compress image
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            resolve(blob);
+          }, file.type, quality);
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target.result;
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // PDF compression would require pdf-lib library
+  // Placeholder for future implementation
+
   const simulateCompression = async () => {
     if (selectedFiles.length === 0) return;
 
@@ -59,32 +92,62 @@ const Salify = () => {
     setProgress(0);
     setShowResults(false);
 
-    const ratio = compressionModes[compressionMode].ratio;
+    const mode = compressionModes;
     const results = [];
 
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
+      let compressedBlob = null;
+      let compressedSize = file.size;
 
-      // Simulate compression progress for each file
-      for (let p = 0; p <= 100; p += 5) {
-        await new Promise(resolve => setTimeout(resolve, 30));
-        const overallProgress = ((i * 100) + p) / selectedFiles.length;
-        setProgress(overallProgress);
+      try {
+        // Update progress - start compression for this file
+        setProgress((i * 100) / selectedFiles.length);
+
+        if (file.type.startsWith('image/')) {
+          // Compress image
+          compressedBlob = await compressImage(file.file, mode.imageQuality);
+          compressedSize = compressedBlob.size;
+        } else if (file.type.startsWith('video/')) {
+          // Video compression simulation - in real app would use ffmpeg.wasm
+          compressedSize = Math.floor(file.size * (1 - (1 - mode.videoWidth)));
+        } else if (file.type === 'application/pdf') {
+          // PDF compression - would need pdf-lib in production
+          compressedSize = Math.floor(file.size * 0.85);
+        } else {
+          compressedSize = file.size;
+        }
+
+        // Simulate processing time
+        for (let p = 20; p <= 100; p += 20) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          const overallProgress = ((i * 100) + p) / selectedFiles.length;
+          setProgress(overallProgress);
+        }
+
+        const savedBytes = file.size - compressedSize;
+        const savedPercent = Math.round((savedBytes / file.size) * 100);
+
+        results.push({
+          ...file,
+          originalSize: file.size,
+          compressedSize: Math.max(compressedSize, 1),
+          savedBytes: Math.max(savedBytes, 0),
+          savedPercent: Math.max(savedPercent, 0),
+          compressedBlob: compressedBlob
+        });
+      } catch (error) {
+        console.error(`Error compressing ${file.name}:`, error);
+        results.push({
+          ...file,
+          originalSize: file.size,
+          compressedSize: file.size,
+          savedBytes: 0,
+          savedPercent: 0,
+          compressedBlob: null,
+          error: error.message
+        });
       }
-
-      // Calculate compressed size with some randomization for realism
-      const randomFactor = 0.9 + Math.random() * 0.2; // 0.9 to 1.1
-      const compressedSize = Math.floor(file.size * ratio * randomFactor);
-      const savedBytes = file.size - compressedSize;
-      const savedPercent = Math.round((savedBytes / file.size) * 100);
-
-      results.push({
-        ...file,
-        originalSize: file.size,
-        compressedSize: compressedSize,
-        savedBytes: savedBytes,
-        savedPercent: savedPercent
-      });
     }
 
     setProgress(100);
@@ -97,51 +160,15 @@ const Salify = () => {
 
   const downloadFile = async (file) => {
     try {
-      // Create a canvas to compress images
-      if (file.type.startsWith('image/')) {
-        const img = new Image();
-        const reader = new FileReader();
-
-        reader.onload = (e) => {
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            // Calculate new dimensions (compress by reducing quality, not size)
-            canvas.width = img.width;
-            canvas.height = img.height;
-
-            // Draw image
-            ctx.drawImage(img, 0, 0);
-
-            // Convert to blob with compression
-            const quality = compressionModes[compressionMode].ratio;
-            canvas.toBlob((blob) => {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `compressed_${file.name}`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }, file.type, quality);
-          };
-          img.src = e.target.result;
-        };
-
-        reader.readAsDataURL(file.file);
-      } else {
-        // For non-image files, download original (in real app, would compress)
-        const url = URL.createObjectURL(file.file);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `compressed_${file.name}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
+      let downloadBlob = file.compressedBlob || file.file;
+      const url = URL.createObjectURL(downloadBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `compressed_${file.name}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Download error:', error);
       alert('Error downloading file. Please try again.');
@@ -275,7 +302,7 @@ const Salify = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {Object.entries(compressionModes).map(([key, mode]) => (
+                  {Object.entries(allModes).map(([key, mode]) => (
                     <button
                       key={key}
                       onClick={() => setCompressionMode(key)}
@@ -290,7 +317,7 @@ const Salify = () => {
                       <div className={`text-xs font-medium px-2 py-1 rounded-full inline-block ${
                         compressionMode === key ? 'bg-purple-200 text-purple-700' : 'bg-gray-200 text-gray-600'
                       }`}>
-                        ~{Math.round((1 - mode.ratio) * 100)}% reduction
+                        ~{Math.round((1 - mode.imageQuality) * 100)}% reduction
                       </div>
                     </button>
                   ))}
@@ -324,7 +351,7 @@ const Salify = () => {
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 text-center mt-3">
-                  Compressing with {compressionModes[compressionMode].label} mode...
+                  Compressing with {compressionModes.label} mode...
                 </p>
               </div>
             )}

@@ -2,10 +2,16 @@ import streamlit as st
 import os
 import tempfile
 from PIL import Image
-import moviepy.editor as mp
 from pypdf2 import PdfReader, PdfWriter
 import zipfile
 import base64
+
+# Optional imports for advanced features
+try:
+    import moviepy.editor as mp
+    VIDEO_COMPRESSION_ENABLED = True
+except ImportError:
+    VIDEO_COMPRESSION_ENABLED = False
 
 st.set_page_config(page_title="Salify - File Compressor", page_icon="⚡", layout="wide")
 
@@ -23,10 +29,18 @@ def compress_image(file, quality):
     return output.name, os.path.getsize(output.name)
 
 def compress_video(file_path, bitrate):
-    video = mp.VideoFileClip(file_path)
-    output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    video.write_videofile(output.name, bitrate=bitrate, verbose=False, logger=None)
-    return output.name, os.path.getsize(output.name)
+    if not VIDEO_COMPRESSION_ENABLED:
+        # Return original file size if moviepy not available
+        return file_path, os.path.getsize(file_path)
+    
+    try:
+        video = mp.VideoFileClip(file_path)
+        output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        video.write_videofile(output.name, bitrate=bitrate, verbose=False, logger=None)
+        return output.name, os.path.getsize(output.name)
+    except Exception as e:
+        st.warning(f"Video compression not available: {str(e)}")
+        return file_path, os.path.getsize(file_path)
 
 def compress_pdf(file, quality):
     reader = PdfReader(file)
